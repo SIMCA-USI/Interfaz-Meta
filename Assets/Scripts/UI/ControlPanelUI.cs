@@ -83,6 +83,8 @@ public class ControlPanelUI : MonoBehaviour
         FlaskApiClient.Instance.OnConnectionLost += OnConnectionLost;
         FlaskApiClient.Instance.OnConnectionRestored += OnConnectionRestored;
 
+        StartCoroutine(InitMapWhenConnected());
+
         Debug.Log("[ControlPanelUI] Inicializado. Botones conectados.");
     }
 
@@ -256,17 +258,41 @@ public class ControlPanelUI : MonoBehaviour
         Transform wv = transform.Find("[GPS Map Panel]/BG/WebViewContainer/MapBrowser");
         if (wv != null) {
             mapBrowser = wv.GetComponent<TLab.WebView.Browser>();
-            if (mapBrowser != null) {
-                string ip = PlayerPrefs.GetString("ServerIP", "192.168.1.100");
-                string port = PlayerPrefs.GetString("ServerPort", "5050");
-                mapBrowser.InitOption($"http://{ip}:{port}/gps_only", 30, new TLab.WebView.Download.Option());
-                mapBrowser.Init(new Vector2Int(1920, 1080), new Vector2Int(1920, 1080));
-            }
         }
         
         // Find [GPS Map Panel] globally
         var gps = GameObject.Find("[GPS Map Panel]");
         if (gps != null) gpsMapPanel = gps;
+    }
+
+    public void ReloadMap(string ip, int port)
+    {
+        if (mapBrowser != null)
+        {
+            mapBrowser.LoadUrl($"http://{ip}:{port}/gps_only");
+            Debug.Log($"[ControlPanelUI] Mapa recargado en caliente con nueva IP: {ip}:{port}");
+        }
+    }
+
+    IEnumerator InitMapWhenConnected()
+    {
+        // Esperar a que FlaskApiClient esté conectado (para tener la IP correcta)
+        while (FlaskApiClient.Instance == null || !FlaskApiClient.Instance.isConnected)
+            yield return new WaitForSeconds(1f);
+
+        if (mapBrowser != null)
+        {
+            string ip = FlaskApiClient.Instance.serverIp;
+            int port = FlaskApiClient.Instance.serverPort;
+            string url = $"http://{ip}:{port}/gps_only";
+            mapBrowser.InitOption(url, 15, new TLab.WebView.Download.Option());
+            mapBrowser.Init(new Vector2Int(1920, 1080), new Vector2Int(1920, 1080));
+            Debug.Log($"[ControlPanelUI] Mapa GPS iniciado: {url}");
+        }
+        else
+        {
+            Debug.LogWarning("[ControlPanelUI] MapBrowser no encontrado. El panel GPS no se cargará.");
+        }
     }
 
     // =====================================================================

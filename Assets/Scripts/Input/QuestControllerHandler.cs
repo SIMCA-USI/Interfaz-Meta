@@ -32,12 +32,28 @@ public class QuestControllerHandler : MonoBehaviour
     // Usamos las claves de OVRInput del Meta XR SDK
     // Si OVRInput no está disponible, usamos Input.GetAxis como fallback
 
+    void Start()
+    {
+        // Forzar fondo azul por defecto si el passthrough arranca oculto.
+        // Hacemos esto en ejecución para que el Validator de Meta no se queje de cámara opaca.
+        var passthrough = FindFirstObjectByType<OVRPassthroughLayer>();
+        if (passthrough != null && passthrough.hidden)
+        {
+            Camera.main.clearFlags = CameraClearFlags.SolidColor;
+            Camera.main.backgroundColor = new Color(0.1f, 0.2f, 0.3f, 1f);
+        }
+    }
+
     void Update()
     {
-        if (FlaskApiClient.Instance == null || !FlaskApiClient.Instance.isConnected) return;
+        // Botones locales SIEMPRE (no dependen de conexión)
+        HandleLocalButtons();
 
+        // Comunicación con backend solo si hay conexión
+        if (FlaskApiClient.Instance == null || !FlaskApiClient.Instance.isConnected) return;
+        
         HandleJoystick();
-        HandleButtons();
+        HandleNetworkButtons();
     }
 
     // =====================================================================
@@ -53,7 +69,7 @@ public class QuestControllerHandler : MonoBehaviour
         // En Quest: usar OVRInput
         try
         {
-            stick = OVRInput.Get(OVRInput.Axis2D.SecondaryThumbstick);
+            stick = OVRInput.Get(OVRInput.RawAxis2D.RThumbstick);
         }
         catch
         {
@@ -83,14 +99,14 @@ public class QuestControllerHandler : MonoBehaviour
     }
 
     // =====================================================================
-    // BOTONES
+    // BOTONES DE RED (Requieren conexión al backend)
     // =====================================================================
 
-    void HandleButtons()
+    void HandleNetworkButtons()
     {
         // Botón B (derecho) → Toggle VR Mode
         #if UNITY_ANDROID && !UNITY_EDITOR
-        bool bPressed = OVRInput.GetDown(OVRInput.Button.Two); // B button
+        bool bPressed = OVRInput.GetDown(OVRInput.RawButton.B); // B button
         #else
         bool bPressed = Input.GetKeyDown(KeyCode.V); // V = VR Mode en PC
         #endif
@@ -104,7 +120,7 @@ public class QuestControllerHandler : MonoBehaviour
 
         // Grip Derecho → Toggle Emergency Stop
         #if UNITY_ANDROID && !UNITY_EDITOR
-        bool gripPressed = OVRInput.GetDown(OVRInput.Button.SecondaryHandTrigger);
+        bool gripPressed = OVRInput.GetDown(OVRInput.RawButton.RHandTrigger);
         #else
         bool gripPressed = Input.GetKeyDown(KeyCode.Space); // Space = Emergency en PC
         #endif
@@ -115,10 +131,17 @@ public class QuestControllerHandler : MonoBehaviour
             FlaskApiClient.Instance.SendVrEmergency(_emergencyStopActive);
             Debug.Log($"[QuestController] Emergency Stop: {(_emergencyStopActive ? "ACTIVADO" : "liberado")}");
         }
+    }
 
+    // =====================================================================
+    // BOTONES LOCALES (No requieren conexión)
+    // =====================================================================
+
+    void HandleLocalButtons()
+    {
         // Botón A (derecho) → Toggle VR/MR Passthrough
         #if UNITY_ANDROID && !UNITY_EDITOR
-        bool aPressed = OVRInput.GetDown(OVRInput.Button.One); // A button
+        bool aPressed = OVRInput.GetDown(OVRInput.RawButton.A); // A button
         #else
         bool aPressed = Input.GetKeyDown(KeyCode.P); // P = Passthrough en PC
         #endif

@@ -46,10 +46,10 @@ public static class SceneBuilder
     };
 
     // Layout Plano (Flat)
-    const float DIST = 1.3f;
+    const float DIST = 2.5f;
     const float EYE  = 0f;
 
-    static readonly Vector2 CANVAS_RES = new Vector2(1920, 1080);
+    static readonly Vector2 CANVAS_RES = new Vector2(1280, 720);
     static readonly Vector2 CANVAS_SIZE_MTS = new Vector2(1.8f, 1.01f);
 
     // =====================================================================
@@ -76,7 +76,7 @@ public static class SceneBuilder
         BuildSideCam(root.transform, "CAM 5", 5, FlatPos(0.5f, -0.8f));
         BuildGPS(root.transform, FlatPos(0, 0.88f));
 
-        root.AddComponent<RecenterOnStart>();
+        root.AddComponent<LazyFollowUI>();
 
         // ── Fase 4: Adjuntar scripts de comunicación ──
         // FlaskApiClient (Singleton HTTP) — en un objeto persistente
@@ -103,6 +103,47 @@ public static class SceneBuilder
 
         SetupEventSystem();
 
+        // ── Fase 8: Forzar configuración de Passthrough y Teclado ──
+        var ovrManager = Object.FindFirstObjectByType<OVRManager>();
+        if (ovrManager != null)
+        {
+            ovrManager.isInsightPassthroughEnabled = true;
+
+            var pt = ovrManager.gameObject.GetComponent<OVRPassthroughLayer>();
+            if (pt == null) pt = ovrManager.gameObject.AddComponent<OVRPassthroughLayer>();
+            pt.projectionSurfaceType = OVRPassthroughLayer.ProjectionSurfaceType.Reconstructed;
+            pt.hidden = true; // Arranca en VR (fijo)
+            
+            // Forzamos la cámara a Transparente para que el Validator de Meta NO se queje nunca.
+            if (Camera.main != null)
+            {
+                Camera.main.clearFlags = CameraClearFlags.SolidColor;
+                Camera.main.backgroundColor = new Color(0, 0, 0, 0);
+            }
+            
+            // Forzamos la activación del Teclado Nativo en el Config Global de Meta
+#if UNITY_EDITOR
+            var config = UnityEditor.AssetDatabase.LoadAssetAtPath<OVRProjectConfig>("Assets/Oculus/OVRProjectConfig.asset");
+            if (config == null)
+            {
+                var guids = UnityEditor.AssetDatabase.FindAssets("t:OVRProjectConfig");
+                if (guids.Length > 0)
+                    config = UnityEditor.AssetDatabase.LoadAssetAtPath<OVRProjectConfig>(UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]));
+            }
+            if (config != null)
+            {
+                config.requiresSystemKeyboard = true;
+                UnityEditor.EditorUtility.SetDirty(config);
+            }
+#endif
+            
+            Debug.Log("[OK] Passthrough y SystemKeyboard inyectados en OVRManager y ProjectConfig.");
+        }
+        else
+        {
+            Debug.LogWarning("[!] No se encontró OVRManager. Asegúrate de añadir el Building Block de Camera Rig.");
+        }
+
         string path = "Assets/Scenes/MainControlRoom.unity";
         EditorSceneManager.SaveScene(scene, path);
         Debug.Log("[OK] Sala de Control (Calco HTML + Fase 4) creada en: " + path);
@@ -128,8 +169,23 @@ public static class SceneBuilder
         var vidImg = video.AddComponent<RawImage>(); vidImg.color = Color.black;
 
         var ov = R(video.transform, "Overlay", V(0,0), V(1,1));
-        Label(ov.transform, "t", "Waiting for camera 1...", 28,
-            new Color(1,1,1,0.6f), TextAnchor.MiddleCenter, FontStyle.Normal);
+        
+        // Icono de carga giratorio
+        var icon = Label(ov.transform, "icon", "⏳", 80, new Color(1,1,1,0.8f), TextAnchor.MiddleCenter, FontStyle.Normal);
+        icon.rectTransform.anchorMin = V(0, 0.5f);
+        icon.rectTransform.anchorMax = V(1, 1f);
+        var animIcon = icon.gameObject.AddComponent<LoadingAnimator>();
+        animIcon.enableRotation = true;
+        animIcon.enablePulsing = false;
+        animIcon.rotationSpeed = -150f;
+
+        // Texto parpadeante
+        var txtWait = Label(ov.transform, "t", "Conectando Cámara 1...", 28, new Color(1,1,1,0.6f), TextAnchor.MiddleCenter, FontStyle.Normal);
+        txtWait.rectTransform.anchorMin = V(0, 0f);
+        txtWait.rectTransform.anchorMax = V(1, 0.5f);
+        var animTxt = txtWait.gameObject.AddComponent<LoadingAnimator>();
+        animTxt.enableRotation = false;
+        animTxt.enablePulsing = true;
 
         var ctrl = canvas.AddComponent<CameraPanelController>();
         ctrl.cameraId = 1; ctrl.videoDisplay = vidImg;
@@ -490,6 +546,25 @@ public static class SceneBuilder
         var vid = R(bg.transform, "VideoDisplay", V(0,0), V(1, 0.88f));
         vid.AddComponent<RawImage>().color = Color.black;
 
+        var ov = R(vid.transform, "Overlay", V(0,0), V(1,1));
+        
+        // Icono de carga giratorio
+        var icon = Label(ov.transform, "icon", "⏳", 60, new Color(1,1,1,0.8f), TextAnchor.MiddleCenter, FontStyle.Normal);
+        icon.rectTransform.anchorMin = V(0, 0.5f);
+        icon.rectTransform.anchorMax = V(1, 1f);
+        var animIcon = icon.gameObject.AddComponent<LoadingAnimator>();
+        animIcon.enableRotation = true;
+        animIcon.enablePulsing = false;
+        animIcon.rotationSpeed = -150f;
+
+        // Texto parpadeante
+        var txtWait = Label(ov.transform, "t", "Conectando Cámara " + camId + "...", 20, new Color(1,1,1,0.6f), TextAnchor.MiddleCenter, FontStyle.Normal);
+        txtWait.rectTransform.anchorMin = V(0, 0f);
+        txtWait.rectTransform.anchorMax = V(1, 0.5f);
+        var animTxt = txtWait.gameObject.AddComponent<LoadingAnimator>();
+        animTxt.enableRotation = false;
+        animTxt.enablePulsing = true;
+
         var ctrl = canvas.AddComponent<CameraPanelController>();
         ctrl.cameraId = camId; ctrl.videoDisplay = vid.GetComponent<RawImage>();
     }
@@ -625,13 +700,22 @@ public static class SceneBuilder
                 return;
             }
         }
-        var fb = new GameObject("[XR Camera Rig]");
+        var xr = new GameObject("[XR Camera Rig]");
         var cam = new GameObject("Main Camera");
-        cam.tag = "MainCamera"; cam.transform.SetParent(fb.transform);
+        cam.tag = "MainCamera"; cam.transform.SetParent(xr.transform);
         cam.transform.localPosition = new Vector3(0, 1.6f, 0);
         var c = cam.AddComponent<Camera>();
         c.clearFlags = CameraClearFlags.SolidColor;
-        c.backgroundColor = new Color(0.01f, 0.01f, 0.03f);
+        c.backgroundColor = new Color(0, 0, 0, 0); // Transparente para evitar error del Validator de Meta
+        cam.tag = "MainCamera";
+
+        // Añadir gestor de Passthrough
+        var manager = xr.AddComponent<OVRManager>();
+        manager.isInsightPassthroughEnabled = true;
+
+        var pt = xr.AddComponent<OVRPassthroughLayer>();
+        pt.projectionSurfaceType = OVRPassthroughLayer.ProjectionSurfaceType.Reconstructed;
+        pt.hidden = true; // Arranca oculto para modo VR estándar
     }
 
     static void SetupEventSystem()

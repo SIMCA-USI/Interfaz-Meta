@@ -61,6 +61,18 @@ public class ServerDiscovery : MonoBehaviour
                 FlaskApiClient.Instance.serverIp = _detectedIp;
                 FlaskApiClient.Instance.serverPort = _detectedPort;
                 Debug.Log($"[ServerDiscovery] FlaskApiClient actualizado a {_detectedIp}:{_detectedPort}");
+                
+                // Guardar en PlayerPrefs para el próximo arranque (evita pantalla negra antes del discovery)
+                PlayerPrefs.SetString("ServerIP", _detectedIp);
+                PlayerPrefs.SetString("ServerPort", _detectedPort.ToString());
+                PlayerPrefs.Save();
+
+                // Recargar el mapa si la interfaz ya está instanciada
+                var controlPanel = FindObjectOfType<ControlPanelUI>();
+                if (controlPanel != null)
+                {
+                    controlPanel.ReloadMap(_detectedIp, _detectedPort);
+                }
             }
         }
     }

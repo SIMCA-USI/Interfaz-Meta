@@ -32,6 +32,9 @@ public class MjpegStreamReceiver : MonoBehaviour
     Texture2D _tex;
     byte[] _latestFrame;
     bool _hasNewFrame = false;
+    private readonly object _frameLock = new object();
+    private float _lastDecodeTime = 0f;
+    private const float MIN_DECODE_INTERVAL = 1f / 15f; // Limitar a 15 FPS para no saturar CPU
     CancellationTokenSource _cts;
     int _frameCount = 0;
     float _fpsTimer = 0f;
@@ -46,6 +49,10 @@ public class MjpegStreamReceiver : MonoBehaviour
 
     void OnEnable()
     {
+        // IMPORTANTE: .NET/Mono tiene un límite de 2 conexiones simultáneas por defecto a la misma IP.
+        // Si no lo subimos, las cámaras 3, 4 y 5 se quedarán atascadas para siempre.
+        System.Net.ServicePointManager.DefaultConnectionLimit = 10;
+        
         StartCoroutine(WaitForConnectionThenStream());
     }
 
@@ -64,6 +71,15 @@ public class MjpegStreamReceiver : MonoBehaviour
         // Esperar a que FlaskApiClient se conecte realmente
         while (!FlaskApiClient.Instance.isConnected)
             yield return new WaitForSeconds(1f);
+
+        // --- Carga en Cascada (Staggered Loading) ---
+        // Retrasa la carga 0.6 segundos por cámara para no saturar la CPU al cargar las 5 a la vez
+        float delay = (cameraId - 1) * 0.6f;
+        if (delay > 0)
+        {
+            Debug.Log($"[MJPEG] Cámara {cameraId}: En cola de conexión (esperando {delay:F1}s)...");
+            yield return new WaitForSeconds(delay);
+        }
 
         Debug.Log($"[MJPEG] Cámara {cameraId}: Servidor conectado, iniciando stream.");
         _connState = ConnectionState.Connected;
@@ -124,38 +140,38 @@ public class MjpegStreamReceiver : MonoBehaviour
         // Aplicar frame nuevo al RawImage (solo en el hilo principal)
         if (_hasNewFrame && _latestFrame != null && targetDisplay != null)
         {
-            try
+            if (Time.time - _lastDecodeTime >= MIN_DECODE_INTERVAL)
             {
-                if (_tex.LoadImage(_latestFrame))
+                _lastDecodeTime = Time.time;
+                try
                 {
-                    targetDisplay.texture = _tex;
-                    targetDisplay.color = Color.white; // IMPORTANTE: Quitar el Color.black inicial
-                    
-                    // Ocultar texto "Waiting for Camera..."
-                    if (targetDisplay.transform != null)
+                    if (_tex == null)
                     {
-                        var overlay = targetDisplay.transform.Find("Overlay");
-                        if (overlay != null && overlay.gameObject.activeSelf)
-                        {
-                            overlay.gameObject.SetActive(false);
-                        }
+                        _tex = new Texture2D(2, 2, TextureFormat.RGB24, false);
                     }
                     
-                    _connState = ConnectionState.Connected;
-                    
-                    _frameCount++;
-                    if (_frameCount % 50 == 0) Debug.Log($"[MJPEG] Cámara {cameraId}: Decodificados 50 frames correctamente (Tamaño: {_latestFrame.Length} bytes)");
+                    if (_tex.LoadImage(_latestFrame))
+                    {
+                        targetDisplay.texture = _tex;
+                        targetDisplay.color = Color.white; // IMPORTANTE: Quitar el Color.black inicial
+                        
+                        _connState = ConnectionState.Connected;
+                        
+                        _frameCount++;
+                        if (_frameCount % 50 == 0) Debug.Log($"[MJPEG] Cámara {cameraId}: Decodificados 50 frames correctamente (Tamaño: {_latestFrame.Length} bytes)");
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[MJPEG] Error: LoadImage devolvió false para cámara {cameraId}. Tamaño frame: {_latestFrame.Length} bytes");
+                    }
                 }
-                else
+                catch (System.Exception e)
                 {
-                    Debug.LogWarning($"[MJPEG] Error: LoadImage devolvió false para cámara {cameraId}. Tamaño frame: {_latestFrame.Length} bytes");
+                    Debug.LogWarning($"[MJPEG] Error cargando frame cam {cameraId}: {e.Message}");
                 }
+                
+                _hasNewFrame = false;
             }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[MJPEG] Error cargando frame cam {cameraId}: {e.Message}");
-            }
-            _hasNewFrame = false;
         }
 
         // --- Mostrar Overlay si no hay frame ---
@@ -172,12 +188,13 @@ public class MjpegStreamReceiver : MonoBehaviour
                 
                 if (shouldShow)
                 {
-                    var tmpro = overlay.GetComponentInChildren<TMPro.TextMeshProUGUI>();
-                    var txt = overlay.GetComponentInChildren<UnityEngine.UI.Text>();
-                    string msg = (_connState == ConnectionState.Reconnecting) ? "Reconectando..." : "Esperando conexión...";
-                    
-                    if (tmpro != null) tmpro.text = msg;
-                    else if (txt != null) txt.text = msg;
+                    var txtObj = overlay.Find("t");
+                    if (txtObj != null)
+                    {
+                        var tmpro = txtObj.GetComponent<TMPro.TextMeshProUGUI>();
+                        string msg = (_connState == ConnectionState.Reconnecting) ? "Reconectando..." : "Esperando conexión...";
+                        if (tmpro != null) tmpro.text = msg;
+                    }
                 }
             }
         }

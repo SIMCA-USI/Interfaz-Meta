@@ -364,14 +364,15 @@ public class FlaskApiClient : MonoBehaviour
     /// <summary>Toggle VR mode on/off</summary>
     public void SendVrMode(bool active)
     {
-        StartCoroutine(PostJson("/publish_modo_mision", $"{{\"mode\":{(active ? 6 : 0)}}}"));
+        string valStr = active ? "true" : "false";
+        StartCoroutine(PostJson("/api/control", $"{{\"boton\":\"vr_mode\",\"estado\":{valStr}}}"));
     }
 
     /// <summary>Set VR emergency brake</summary>
     public void SendVrEmergency(bool active)
     {
         string valStr = active ? "true" : "false";
-        StartCoroutine(PostJson("/publish_stop_brakes", $"{{\"value\":{valStr}}}"));
+        StartCoroutine(PostJson("/api/control", $"{{\"boton\":\"vr_emergency\",\"estado\":{valStr}}}"));
     }
 
     /// <summary>Activar override signal (1 = true, 0 = false)</summary>
