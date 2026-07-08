@@ -255,14 +255,15 @@ public class ControlPanelUI : MonoBehaviour
         var sv = transform.Find("ScrollView");
         if (sv != null) scrollViewContent = sv.gameObject;
         
-        Transform wv = transform.Find("[GPS Map Panel]/BG/WebViewContainer/MapBrowser");
-        if (wv != null) {
-            mapBrowser = wv.GetComponent<TLab.WebView.Browser>();
-        }
-        
         // Find [GPS Map Panel] globally
         var gps = GameObject.Find("[GPS Map Panel]");
-        if (gps != null) gpsMapPanel = gps;
+        if (gps != null) 
+        {
+            gpsMapPanel = gps;
+        }
+
+        // Find MapBrowser robustly regardless of hierarchy
+        mapBrowser = Object.FindObjectOfType<TLab.WebView.Browser>();
     }
 
     public void ReloadMap(string ip, int port)
@@ -276,22 +277,27 @@ public class ControlPanelUI : MonoBehaviour
 
     IEnumerator InitMapWhenConnected()
     {
-        // Esperar a que FlaskApiClient esté conectado (para tener la IP correcta)
-        while (FlaskApiClient.Instance == null || !FlaskApiClient.Instance.isConnected)
-            yield return new WaitForSeconds(1f);
+        yield return new WaitForSeconds(2f);
 
-        if (mapBrowser != null)
+        if (mapBrowser != null && FlaskApiClient.Instance != null)
         {
             string ip = FlaskApiClient.Instance.serverIp;
             int port = FlaskApiClient.Instance.serverPort;
             string url = $"http://{ip}:{port}/gps_only";
+
+            // Forzar que el RectTransform del mapa ocupe todo el espacio padre, por si el prefab viene con escala 0
+            var rt = mapBrowser.GetComponent<RectTransform>();
+            if (rt != null)
+            {
+                rt.anchorMin = Vector2.zero;
+                rt.anchorMax = Vector2.one;
+                rt.sizeDelta = Vector2.zero;
+                rt.anchoredPosition = Vector2.zero;
+                rt.localScale = Vector3.one;
+            }
+
             mapBrowser.InitOption(url, 15, new TLab.WebView.Download.Option());
             mapBrowser.Init(new Vector2Int(1920, 1080), new Vector2Int(1920, 1080));
-            Debug.Log($"[ControlPanelUI] Mapa GPS iniciado: {url}");
-        }
-        else
-        {
-            Debug.LogWarning("[ControlPanelUI] MapBrowser no encontrado. El panel GPS no se cargará.");
         }
     }
 
@@ -445,6 +451,12 @@ public class ControlPanelUI : MonoBehaviour
     
     void ToggleDynamicSpeed()
     {
+        if (IsVehicleMoving())
+        {
+            Debug.Log("[ControlPanelUI] Vehículo en movimiento. No se puede cambiar Dynamic Speed.");
+            return;
+        }
+        
         _isDynamicSpeed = !_isDynamicSpeed;
         UpdateToggleVisual(tglDynamicSpeed, _isDynamicSpeed);
         FlaskApiClient.Instance?.SendUpdateUiState("speedTypeChecked", _isDynamicSpeed ? "true" : "false");
@@ -453,6 +465,12 @@ public class ControlPanelUI : MonoBehaviour
     
     void ToggleFollowMe()
     {
+        if (IsVehicleMoving())
+        {
+            Debug.Log("[ControlPanelUI] Vehículo en movimiento. No se puede cambiar Follow Me.");
+            return;
+        }
+
         _isFollowMe = !_isFollowMe;
         UpdateToggleVisual(tglFollowMe, _isFollowMe);
         FlaskApiClient.Instance?.SendUpdateUiState("followmeWayPointChecked", _isFollowMe ? "true" : "false");
@@ -546,90 +564,97 @@ public class ControlPanelUI : MonoBehaviour
         if (FlaskApiClient.Instance == null) return;
         var api = FlaskApiClient.Instance;
 
-        // ── Velocidad ──
-        if (txtSpeed != null)
-            txtSpeed.text = api.speed.ToString("F1");
-
-        // ── Emergency Stop ──
-        if (txtEmergReason != null)
+        try
         {
-            txtEmergReason.text = api.emergencyReason;
-            txtEmergReason.color = api.emergencyStopActive ? RED_SELECTED : HexColor("#4ade80");
-        }
-        if (txtEmergTitle != null)
-            txtEmergTitle.color = api.emergencyStopActive ? RED_SELECTED : HexColor("#4ade80");
+            // ── Velocidad ──
+            if (txtSpeed != null)
+                txtSpeed.text = api.speed.ToString("F1");
 
-        // ── Roll / Pitch ──
-        if (txtRollVal != null)
-            txtRollVal.text = $"Roll: {api.rollDeg:F1}";
-        if (txtPitchVal != null)
-            txtPitchVal.text = $"Pitch: {api.pitchDeg:F1}";
-
-        // ── Route progress ──
-        if (txtProgress != null)
-            txtProgress.text = $"Percentage traveled: {api.routeProgress:F2}%";
-
-        // ── Waypoint info ──
-        if (txtWpInfo != null)
-            txtWpInfo.text = api.waypointInfo;
-
-        // ── Sincronizar botones de Record y Play Map ──
-        if (api.isRecording != _isRecording)
-        {
-            _isRecording = api.isRecording;
-            if (btnRecord != null)
+            // ── Emergency Stop ──
+            if (txtEmergReason != null)
             {
-                btnRecord.interactable = !_isRecording;
-                SetBtnBg(btnRecord, _isRecording ? GREY_DISABLED : GREEN_DEFAULT);
+                txtEmergReason.text = api.emergencyReason;
+                txtEmergReason.color = api.emergencyStopActive ? RED_SELECTED : HexColor("#4ade80");
             }
-        }
-        
-        if (api.isPlayingMap != _isPlayingMap)
-        {
-            _isPlayingMap = api.isPlayingMap;
-            if (btnPlayMap != null)
+            if (txtEmergTitle != null)
+                txtEmergTitle.color = api.emergencyStopActive ? RED_SELECTED : HexColor("#4ade80");
+
+            // ── Roll / Pitch ──
+            if (txtRollVal != null)
+                txtRollVal.text = $"Roll: {api.rollDeg:F1}";
+            if (txtPitchVal != null)
+                txtPitchVal.text = $"Pitch: {api.pitchDeg:F1}";
+
+            // ── Route progress ──
+            if (txtProgress != null)
+                txtProgress.text = $"Percentage traveled: {api.routeProgress:F2}%";
+
+            // ── Waypoint info ──
+            if (txtWpInfo != null)
+                txtWpInfo.text = api.waypointInfo;
+
+            // ── Sincronizar botones de Record y Play Map ──
+            if (api.isRecording != _isRecording)
             {
-                btnPlayMap.interactable = !_isPlayingMap;
-                SetBtnBg(btnPlayMap, _isPlayingMap ? GREY_DISABLED : GREEN_DEFAULT);
+                _isRecording = api.isRecording;
+                if (btnRecord != null)
+                {
+                    btnRecord.interactable = !_isRecording;
+                    SetBtnBg(btnRecord, _isRecording ? GREY_DISABLED : GREEN_DEFAULT);
+                }
             }
-        }
+            
+            if (api.isPlayingMap != _isPlayingMap)
+            {
+                _isPlayingMap = api.isPlayingMap;
+                if (btnPlayMap != null)
+                {
+                    btnPlayMap.interactable = !_isPlayingMap;
+                    SetBtnBg(btnPlayMap, _isPlayingMap ? GREY_DISABLED : GREEN_DEFAULT);
+                }
+            }
 
-        // ── Sincronizar Toggles y Switchers ──
-        if (api.speedTypeChecked != _isDynamicSpeed) {
-            _isDynamicSpeed = api.speedTypeChecked;
-            if (tglDynamicSpeed != null) UpdateToggleVisual(tglDynamicSpeed, _isDynamicSpeed);
-        }
-        if (api.signalOverrideChecked != _isOverrideSpeed) {
-            _isOverrideSpeed = api.signalOverrideChecked;
-            if (tglOverrideSpeed != null) UpdateToggleVisual(tglOverrideSpeed, _isOverrideSpeed);
-        }
-        if (api.followmeWayPointChecked != _isFollowMe) {
-            _isFollowMe = api.followmeWayPointChecked;
-            if (tglFollowMe != null) UpdateToggleVisual(tglFollowMe, _isFollowMe);
-        }
-        
-        // ── Sincronizar Freno de Emergencia ──
-        if (api.emergencyBrake != _emergencyToggle)
-        {
-            _emergencyToggle = api.emergencyBrake;
-            if (btnStopEmerg != null) SetBtnBg(btnStopEmerg, _emergencyToggle ? RED_SELECTED : GREEN_DEFAULT);
-        }
-        
-        // Actualizar HUD text (razón)
-        if (txtEmergReason != null)
-        {
-            txtEmergReason.text = api.emergencyReason;
-            txtEmergReason.color = (api.emergencyReason == "None" || string.IsNullOrEmpty(api.emergencyReason)) ? HexColor("#4ade80") : HexColor("#ef4444"); // Rojo si hay frenada
-        }
+            // ── Sincronizar Toggles y Switchers ──
+            if (api.speedTypeChecked != _isDynamicSpeed) {
+                _isDynamicSpeed = api.speedTypeChecked;
+                if (tglDynamicSpeed != null) UpdateToggleVisual(tglDynamicSpeed, _isDynamicSpeed);
+            }
+            if (api.signalOverrideChecked != _isOverrideSpeed) {
+                _isOverrideSpeed = api.signalOverrideChecked;
+                if (tglOverrideSpeed != null) UpdateToggleVisual(tglOverrideSpeed, _isOverrideSpeed);
+            }
+            if (api.followmeWayPointChecked != _isFollowMe) {
+                _isFollowMe = api.followmeWayPointChecked;
+                if (tglFollowMe != null) UpdateToggleVisual(tglFollowMe, _isFollowMe);
+            }
+            
+            // ── Sincronizar Freno de Emergencia ──
+            if (api.emergencyBrake != _emergencyToggle)
+            {
+                _emergencyToggle = api.emergencyBrake;
+                if (btnStopEmerg != null) SetBtnBg(btnStopEmerg, _emergencyToggle ? RED_SELECTED : GREEN_DEFAULT);
+            }
+            
+            // Actualizar HUD text (razón)
+            if (txtEmergReason != null)
+            {
+                txtEmergReason.text = api.emergencyReason;
+                txtEmergReason.color = (api.emergencyReason == "None" || string.IsNullOrEmpty(api.emergencyReason)) ? HexColor("#4ade80") : HexColor("#ef4444"); // Rojo si hay frenada
+            }
 
-        // ── updateStatusMode() — Sincroniza los botones con el modo real del backend ──
-        if (!string.IsNullOrEmpty(api.activeFollowType)) {
-            _activeFollowType = api.activeFollowType;
+            // ── updateStatusMode() — Sincroniza los botones con el modo real del backend ──
+            if (!string.IsNullOrEmpty(api.activeFollowType)) {
+                _activeFollowType = api.activeFollowType;
+            }
+            UpdateModeFromServer(api.operationMode);
+            
+            // ── Phase 4: Maps ──
+            UpdateDropdownOptions();
         }
-        UpdateModeFromServer(api.operationMode);
-        
-        // ── Phase 4: Maps ──
-        UpdateDropdownOptions();
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[ControlPanelUI] Error updating UI: {e.Message}\n{e.StackTrace}");
+        }
     }
     
     int _lastMapCount = -1;
@@ -723,5 +748,12 @@ public class ControlPanelUI : MonoBehaviour
         Color c;
         ColorUtility.TryParseHtmlString(hex, out c);
         return c;
+    }
+
+    bool IsVehicleMoving()
+    {
+        if (FlaskApiClient.Instance == null) return false;
+        // Si la velocidad absoluta es mayor a 0.5, se considera en movimiento
+        return Mathf.Abs(FlaskApiClient.Instance.speed) > 0.5f;
     }
 }

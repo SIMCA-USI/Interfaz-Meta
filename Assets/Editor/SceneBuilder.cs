@@ -49,7 +49,7 @@ public static class SceneBuilder
     const float DIST = 2.5f;
     const float EYE  = 0f;
 
-    static readonly Vector2 CANVAS_RES = new Vector2(1280, 720);
+    static readonly Vector2 CANVAS_RES = new Vector2(2560, 1440);
     static readonly Vector2 CANVAS_SIZE_MTS = new Vector2(1.8f, 1.01f);
 
     // =====================================================================
@@ -163,15 +163,15 @@ public static class SceneBuilder
         var bg = R(canvas.transform, "BG", V(0,0), V(1,1));
         bg.AddComponent<Image>().color = BG_BODY;
 
-        // ── VIDEO AREA (78% izquierdo) ──
-        float split = 1500f / 1920f;
+        // ── VIDEO AREA (70% izquierdo, 30% panel derecho) ──
+        float split = 1350f / 1920f;
         var video = R(bg.transform, "VideoArea", V(0,0), V(split, 1));
         var vidImg = video.AddComponent<RawImage>(); vidImg.color = Color.black;
 
         var ov = R(video.transform, "Overlay", V(0,0), V(1,1));
         
         // Icono de carga giratorio
-        var icon = Label(ov.transform, "icon", "⏳", 80, new Color(1,1,1,0.8f), TextAnchor.MiddleCenter, FontStyle.Normal);
+        var icon = Label(ov.transform, "icon", "⏳", 213, new Color(1,1,1,0.8f), TextAnchor.MiddleCenter, FontStyle.Normal);
         icon.rectTransform.anchorMin = V(0, 0.5f);
         icon.rectTransform.anchorMax = V(1, 1f);
         var animIcon = icon.gameObject.AddComponent<LoadingAnimator>();
@@ -180,7 +180,7 @@ public static class SceneBuilder
         animIcon.rotationSpeed = -150f;
 
         // Texto parpadeante
-        var txtWait = Label(ov.transform, "t", "Conectando Cámara 1...", 28, new Color(1,1,1,0.6f), TextAnchor.MiddleCenter, FontStyle.Normal);
+        var txtWait = Label(ov.transform, "t", "Conectando Cámara 1...", 74, new Color(1,1,1,0.6f), TextAnchor.MiddleCenter, FontStyle.Normal);
         txtWait.rectTransform.anchorMin = V(0, 0f);
         txtWait.rectTransform.anchorMax = V(1, 0.5f);
         var animTxt = txtWait.gameObject.AddComponent<LoadingAnimator>();
@@ -192,11 +192,11 @@ public static class SceneBuilder
 
         // Botón CANDADO (arriba-izquierda) – texto "[L]" en vez de emoji
         var lockArea = R(video.transform, "LockBtn", V(0.01f, 0.91f), V(0.055f, 0.97f));
-        Btn(lockArea.transform, "btn_lock", "[L]", LOCK_GREEN, 18);
+        Btn(lockArea.transform, "btn_lock", "[L]", LOCK_GREEN, 47);
 
         // Botón STOP (arriba-derecha) – texto "! STOP"
         var stopArea = R(video.transform, "StopBtn", V(0.86f, 0.91f), V(0.99f, 0.97f));
-        Btn(stopArea.transform, "btn_stop_emerg", "! STOP", STOP_GREEN_BG, 18);
+        Btn(stopArea.transform, "btn_stop_emerg", "! STOP", STOP_GREEN_BG, 47);
 
         // HUD Telemetría
         BuildHUD(video.transform);
@@ -209,13 +209,19 @@ public static class SceneBuilder
         // Título del Panel de Control en lugar de Tabs
         var tabs = R(rp.transform, "Tabs", V(0, 0.954f), V(1, 1));
         tabs.AddComponent<Image>().color = new Color(1f,1f,1f,0.02f);
-        Label(tabs.transform, "t", "CONTROL PANEL", 16, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+        Label(tabs.transform, "t", "CONTROL PANEL", 42, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
 
         // Footer (alto ~50px)
         var foot = R(rp.transform, "Footer", V(0, 0), V(1, 0.046f));
         R(foot.transform, "Bdr", V(0, 0.96f), V(1, 1)).AddComponent<Image>().color = BORDER;
-        Label(foot.transform, "t", "* Switch to Light Mode", 12, TEXT_DIM,
-            TextAnchor.MiddleCenter, FontStyle.Normal);
+        var btnLight = Btn(foot.transform, "btn_light_mode", "* Switch to Light Mode", new Color(0,0,0,0.01f), 31);
+        btnLight.AddComponent<BoxCollider>().size = new Vector3(512, 50, 1);
+        var lblLight = btnLight.transform.Find("Lbl").GetComponent<TMPro.TextMeshProUGUI>();
+        lblLight.color = TEXT_DIM; lblLight.fontStyle = TMPro.FontStyles.Normal;
+        
+        var themeSw = rp.gameObject.AddComponent<ThemeSwitcher>();
+        themeSw.myLabel = lblLight;
+        btnLight.GetComponent<Button>().onClick.AddListener(themeSw.ToggleTheme);
 
         var sv = R(rp.transform, "ScrollView", V(0, 0.046f), V(0.95f, 0.954f)); // Dejamos 5% a la derecha para la scrollbar
         sv.AddComponent<RectMask2D>();
@@ -303,7 +309,7 @@ public static class SceneBuilder
 
     static void BuildSectionRouteName(Transform parent)
     {
-        var sec = Section(parent, "SecRouteName", "ENTER ROUTE NAME", 300);
+        var sec = Section(parent, "SecRouteName", "ENTER ROUTE NAME", 400);
 
         // Input field
         var inp = R(sec.transform, "inp_route_name", V(0.04f, 0.65f), V(0.96f, 0.82f));
@@ -318,14 +324,14 @@ public static class SceneBuilder
         
         var textObj = R(textArea.transform, "Text", V(0,0), V(1,1));
         var textComp = textObj.AddComponent<TextMeshProUGUI>();
-        textComp.fontSize = 14;
+        textComp.fontSize = 37;
         textComp.color = TEXT_MAIN;
         textComp.alignment = TextAlignmentOptions.Left;
         
         var phObj = R(textArea.transform, "Placeholder", V(0,0), V(1,1));
         var phComp = phObj.AddComponent<TextMeshProUGUI>();
         phComp.text = "Nombre de la ruta...";
-        phComp.fontSize = 14;
+        phComp.fontSize = 37;
         phComp.color = TEXT_DIM;
         phComp.alignment = TextAlignmentOptions.Left;
         
@@ -365,7 +371,7 @@ public static class SceneBuilder
         
         var spTextObj = R(spTextArea.transform, "Text", V(0,0), V(1,1));
         var spTextComp = spTextObj.AddComponent<TextMeshProUGUI>();
-        spTextComp.fontSize = 14;
+        spTextComp.fontSize = 37;
         spTextComp.color = TEXT_MAIN;
         spTextComp.alignment = TextAlignmentOptions.Center;
         spTextComp.text = "10";
@@ -385,7 +391,7 @@ public static class SceneBuilder
 
     static void BuildSectionSelectMap(Transform parent)
     {
-        var sec = Section(parent, "SecSelectMap", "SELECT MAP", 360);
+        var sec = Section(parent, "SecSelectMap", "SELECT MAP", 480);
 
         // Dropdown (generado usando DefaultControls para asegurar que funciona en Quest)
         var dropObj = UnityEngine.UI.DefaultControls.CreateDropdown(new UnityEngine.UI.DefaultControls.Resources());
@@ -431,7 +437,7 @@ public static class SceneBuilder
     static void BuildSectionOperationMode(Transform parent)
     {
         // 4 botones full-width + 2 half-width + override row = necesitamos ~480px
-        var sec = Section(parent, "SecOpMode", "OPERATION MODE", 600);
+        var sec = Section(parent, "SecOpMode", "OPERATION MODE", 800);
 
         // 4 full-width buttons apilados
         string[] labels = { "Stand By", "Autonomous", "Teleoperated", "Nav2" };
@@ -471,7 +477,7 @@ public static class SceneBuilder
 
     static void BuildSectionInclination(Transform parent)
     {
-        var sec = Section(parent, "SecInclination", "INCLINATION METERS", 400);
+        var sec = Section(parent, "SecInclination", "INCLINATION METERS", 530);
         BuildCircleMeter(sec.transform, "Roll", V(0.06f, 0.05f), V(0.47f, 0.86f), "Roll: 0.0");
         BuildCircleMeter(sec.transform, "Pitch", V(0.53f, 0.05f), V(0.94f, 0.86f), "Pitch: 0.0");
     }
@@ -506,7 +512,7 @@ public static class SceneBuilder
         var valBg = R(container.transform, "ValBG", V(0.1f, 0), V(0.9f, 0.22f));
         valBg.AddComponent<Image>().color = INPUT_BG;
         AddBorder(valBg.transform);
-        Label(valBg.transform, "Val", valueText, 14, TEXT_MAIN, TextAnchor.MiddleCenter, FontStyle.Bold);
+        Label(valBg.transform, "Val", valueText, 37, TEXT_MAIN, TextAnchor.MiddleCenter, FontStyle.Bold);
     }
 
     static void BuildCarIcon(Transform parent)
@@ -549,7 +555,7 @@ public static class SceneBuilder
         var ov = R(vid.transform, "Overlay", V(0,0), V(1,1));
         
         // Icono de carga giratorio
-        var icon = Label(ov.transform, "icon", "⏳", 60, new Color(1,1,1,0.8f), TextAnchor.MiddleCenter, FontStyle.Normal);
+        var icon = Label(ov.transform, "icon", "⏳", 159, new Color(1,1,1,0.8f), TextAnchor.MiddleCenter, FontStyle.Normal);
         icon.rectTransform.anchorMin = V(0, 0.5f);
         icon.rectTransform.anchorMax = V(1, 1f);
         var animIcon = icon.gameObject.AddComponent<LoadingAnimator>();
@@ -558,7 +564,7 @@ public static class SceneBuilder
         animIcon.rotationSpeed = -150f;
 
         // Texto parpadeante
-        var txtWait = Label(ov.transform, "t", "Conectando Cámara " + camId + "...", 20, new Color(1,1,1,0.6f), TextAnchor.MiddleCenter, FontStyle.Normal);
+        var txtWait = Label(ov.transform, "t", "Conectando Cámara " + camId + "...", 53, new Color(1,1,1,0.6f), TextAnchor.MiddleCenter, FontStyle.Normal);
         txtWait.rectTransform.anchorMin = V(0, 0f);
         txtWait.rectTransform.anchorMax = V(1, 0.5f);
         var animTxt = txtWait.gameObject.AddComponent<LoadingAnimator>();
@@ -586,7 +592,7 @@ public static class SceneBuilder
 
         var ph = R(bg.transform, "WebViewContainer", V(0,0), V(1,0.92f));
         // Add placeholder text in case the WebView fails to load or while it's loading
-        var txt = Label(ph.transform, "t", "SATELLITE MAP\nCargando mapa interactivo...", 36, TEXT_DIM, TextAnchor.MiddleCenter, FontStyle.Normal);
+        var txt = Label(ph.transform, "t", "SATELLITE MAP\nCargando mapa interactivo...", 95, TEXT_DIM, TextAnchor.MiddleCenter, FontStyle.Normal);
         
         // Cargar el prefab de TLabWebView
         GameObject webViewPrefab = Resources.Load<GameObject>("TLab/WebView/Browser");
@@ -613,7 +619,7 @@ public static class SceneBuilder
         btnHand.AddComponent<Image>().color = INPUT_BG;
         btnHand.AddComponent<Button>();
         AddBorder(btnHand.transform);
-        Label(btnHand.transform, "t", "✋", 30, Color.white, TextAnchor.MiddleCenter, FontStyle.Normal);
+        Label(btnHand.transform, "t", "✋", 79, Color.white, TextAnchor.MiddleCenter, FontStyle.Normal);
     }
 
     // =====================================================================
@@ -731,6 +737,11 @@ public static class SceneBuilder
     {
         var go = new GameObject(name);
         go.AddComponent<Canvas>().renderMode = RenderMode.WorldSpace;
+        
+        var scaler = go.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.dynamicPixelsPerUnit = 4f;
+        scaler.referencePixelsPerUnit = 100f;
+        
         go.GetComponent<RectTransform>().sizeDelta = px;
         go.transform.localScale = new Vector3(mt.x / px.x, mt.y / px.y, 1f);
         go.transform.position = pos;

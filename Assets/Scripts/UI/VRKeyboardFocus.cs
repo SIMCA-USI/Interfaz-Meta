@@ -6,6 +6,8 @@ public class VRKeyboardFocus : MonoBehaviour, ISelectHandler, IDeselectHandler
 {
     private TMP_InputField inputField;
     private TouchScreenKeyboard keyboard;
+    
+    public static bool isAnyKeyboardOpen = false;
 
     void Awake()
     {
@@ -21,22 +23,34 @@ public class VRKeyboardFocus : MonoBehaviour, ISelectHandler, IDeselectHandler
         if (inputField != null && (keyboard == null || !keyboard.active))
         {
             keyboard = TouchScreenKeyboard.Open(inputField.text, TouchScreenKeyboardType.Default);
+            isAnyKeyboardOpen = true;
         }
     }
 
     public void OnDeselect(BaseEventData eventData)
     {
-        if (keyboard != null && keyboard.active)
+        if (keyboard != null)
         {
             keyboard.active = false;
+            keyboard = null;
         }
+        isAnyKeyboardOpen = false;
     }
 
     void Update()
     {
-        if (keyboard != null && keyboard.status == TouchScreenKeyboard.Status.Visible)
+        if (keyboard != null)
         {
-            inputField.text = keyboard.text;
+            if (keyboard.status == TouchScreenKeyboard.Status.Visible)
+            {
+                inputField.text = keyboard.text;
+                isAnyKeyboardOpen = true;
+            }
+            else if (keyboard.status == TouchScreenKeyboard.Status.Done || keyboard.status == TouchScreenKeyboard.Status.Canceled)
+            {
+                keyboard = null;
+                isAnyKeyboardOpen = false;
+            }
         }
     }
 }

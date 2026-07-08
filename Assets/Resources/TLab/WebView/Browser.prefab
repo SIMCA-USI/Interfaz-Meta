@@ -95,7 +95,7 @@ MonoBehaviour:
   m_texSize: {x: 512, y: 512}
   m_fps: 30
   m_captureMode: 1
-  m_url: https://youtube.com
+  m_url: about:blank
   m_downloadOption:
     m_directory: 1
     m_subDirectory: downloads
@@ -203,7 +203,7 @@ MonoBehaviour:
   m_texSize: {x: 512, y: 512}
   m_fps: 30
   m_captureMode: 1
-  m_url: https://youtube.com
+  m_url: about:blank
   m_downloadOption:
     m_directory: 1
     m_subDirectory: downloads

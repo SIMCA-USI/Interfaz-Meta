@@ -768,6 +768,7 @@ Todos los endpoints que `FlaskApiClient.cs` consume del servidor Flask (`web_nod
 | 8   | **Joystick hace scroll en el panel de control**                | El ScrollRect intercepta eventos del eje vertical del joystick XR                   | `NoDragScrollRect` bloquea `OnScroll()`. Ya está implementado                               |
 | 9   | **Botón A (Passthrough) no funciona sin conexión al servidor** | El guard clause bloqueaba TODOS los botones                                         | Ya solucionado: separación en `HandleLocalButtons()` y `HandleNetworkButtons()`             |
 | 10  | **Botón B (VR Mode) no se refleja en la interfaz web**         | Usaba el endpoint incorrecto (`/publish_modo_mision` en vez de `/api/control`)      | Ya solucionado: `SendVrMode()` ahora usa `/api/control` con `"boton":"vr_mode"`             |
+| 11  | **Textos borrosos o pixelados en VR**                          | Limitación de los atlas de fuentes estáticos de TextMeshPro                         | Asegúrate de tener activada la **Resolución Dinámica (Dynamic Resolution)** o generar un Font Asset SDF con mayor resolución/padding. |
 
 ### Problemas de Conexión/Hardware
 
