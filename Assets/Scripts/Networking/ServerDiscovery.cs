@@ -68,10 +68,10 @@ public class ServerDiscovery : MonoBehaviour
                 PlayerPrefs.Save();
 
                 // Recargar el mapa si la interfaz ya está instanciada
-                var controlPanel = FindObjectOfType<ControlPanelUI>();
-                if (controlPanel != null)
+                var gpsScreen = FindObjectOfType<GpsMapScreen>();
+                if (gpsScreen != null)
                 {
-                    controlPanel.ReloadMap(_detectedIp, _detectedPort);
+                    gpsScreen.ForceReload();
                 }
             }
         }

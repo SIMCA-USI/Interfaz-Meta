@@ -45,8 +45,6 @@ public class ControlPanelUI : MonoBehaviour
     Button btnMapHand;
     bool _mapFreeMove = false;
     
-    TLab.WebView.Browser mapBrowser;
-    
     GameObject scrollViewContent;
     GameObject gpsMapPanel;
 
@@ -83,9 +81,45 @@ public class ControlPanelUI : MonoBehaviour
         FlaskApiClient.Instance.OnConnectionLost += OnConnectionLost;
         FlaskApiClient.Instance.OnConnectionRestored += OnConnectionRestored;
 
-        StartCoroutine(InitMapWhenConnected());
+        AutoAttachGpsScreen();
 
         Debug.Log("[ControlPanelUI] Inicializado. Botones conectados.");
+    }
+
+    void AutoAttachGpsScreen()
+    {
+        // Asegurar que existe BrowserManager (REQUERIDO por TLab para GC de recursos nativos)
+        if (Object.FindObjectOfType<TLab.WebView.BrowserManager>() == null)
+        {
+            var managers = GameObject.Find("[Managers]");
+            if (managers != null)
+                managers.AddComponent<TLab.WebView.BrowserManager>();
+            else
+                new GameObject("[BrowserManager]").AddComponent<TLab.WebView.BrowserManager>();
+            Debug.Log("[ControlPanelUI] BrowserManager inyectado (no existía).");
+        }
+
+        var gps = GameObject.Find("[GPS Map Panel]");
+        if (gps != null) 
+        {
+            var browser = gps.GetComponentInChildren<TLab.WebView.Browser>(true);
+            if (browser != null)
+            {
+                if (browser.gameObject.GetComponent<GpsMapScreen>() == null)
+                {
+                    browser.gameObject.AddComponent<GpsMapScreen>();
+                    Debug.Log("[ControlPanelUI] GpsMapScreen inyectado en el Browser del GPS.");
+                }
+            }
+            else
+            {
+                Debug.LogError("[ControlPanelUI] ERROR: [GPS Map Panel] no tiene Browser de TLab.");
+            }
+        }
+        else
+        {
+            Debug.LogWarning("[ControlPanelUI] [GPS Map Panel] no encontrado en la escena.");
+        }
     }
 
     void OnDestroy()
@@ -261,45 +295,8 @@ public class ControlPanelUI : MonoBehaviour
         {
             gpsMapPanel = gps;
         }
-
-        // Find MapBrowser robustly regardless of hierarchy
-        mapBrowser = Object.FindObjectOfType<TLab.WebView.Browser>();
     }
 
-    public void ReloadMap(string ip, int port)
-    {
-        if (mapBrowser != null)
-        {
-            mapBrowser.LoadUrl($"http://{ip}:{port}/gps_only");
-            Debug.Log($"[ControlPanelUI] Mapa recargado en caliente con nueva IP: {ip}:{port}");
-        }
-    }
-
-    IEnumerator InitMapWhenConnected()
-    {
-        yield return new WaitForSeconds(2f);
-
-        if (mapBrowser != null && FlaskApiClient.Instance != null)
-        {
-            string ip = FlaskApiClient.Instance.serverIp;
-            int port = FlaskApiClient.Instance.serverPort;
-            string url = $"http://{ip}:{port}/gps_only";
-
-            // Forzar que el RectTransform del mapa ocupe todo el espacio padre, por si el prefab viene con escala 0
-            var rt = mapBrowser.GetComponent<RectTransform>();
-            if (rt != null)
-            {
-                rt.anchorMin = Vector2.zero;
-                rt.anchorMax = Vector2.one;
-                rt.sizeDelta = Vector2.zero;
-                rt.anchoredPosition = Vector2.zero;
-                rt.localScale = Vector3.one;
-            }
-
-            mapBrowser.InitOption(url, 15, new TLab.WebView.Download.Option());
-            mapBrowser.Init(new Vector2Int(1920, 1080), new Vector2Int(1920, 1080));
-        }
-    }
 
     // =====================================================================
     // OPERATION MODE — Réplica exacta de publishOperationMode() de la web
@@ -548,10 +545,10 @@ public class ControlPanelUI : MonoBehaviour
     void ToggleMapHand()
     {
         _mapFreeMove = !_mapFreeMove;
-        SetBtnBg(btnMapHand, _mapFreeMove ? HexColor("#3b82f6") : HexColor("#1e202c"));
-        Debug.Log($"[ControlPanelUI] Map Free Move: {_mapFreeMove}");
-        if (mapBrowser != null) {
-            mapBrowser.EvaluateJS("toggleMapInteraction();");
+        SetBtnBg(btnMapHand, _mapFreeMove ? RED_SELECTED : GREEN_DEFAULT);
+        var browser = Object.FindObjectOfType<TLab.WebView.Browser>();
+        if (browser != null) {
+            browser.EvaluateJS("toggleMapInteraction();");
         }
     }
 

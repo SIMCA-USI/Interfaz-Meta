@@ -91,6 +91,9 @@ public static class SceneBuilder
         // ServerDiscovery — Auto-configura la IP (Fase 2)
         managers.AddComponent<ServerDiscovery>();
 
+        // BrowserManager — REQUERIDO por TLab WebView para limpiar recursos nativos
+        managers.AddComponent<TLab.WebView.BrowserManager>();
+
         // MjpegStreamReceiver — uno por cada cámara que tenga CameraPanelController
         // Se buscan todos los CameraPanelController y se les añade el receiver
         var allCamPanels = Object.FindObjectsByType<CameraPanelController>(FindObjectsSortMode.None);
@@ -594,23 +597,28 @@ public static class SceneBuilder
         // Add placeholder text in case the WebView fails to load or while it's loading
         var txt = Label(ph.transform, "t", "SATELLITE MAP\nCargando mapa interactivo...", 95, TEXT_DIM, TextAnchor.MiddleCenter, FontStyle.Normal);
         
-        // Cargar el prefab de TLabWebView
-        GameObject webViewPrefab = Resources.Load<GameObject>("TLab/WebView/Browser");
-        if (webViewPrefab != null)
-        {
-            var wv = Object.Instantiate(webViewPrefab, ph.transform);
-            wv.name = "MapBrowser";
-            
-            // Adjust the RectTransform to fill the container
-            var rt = wv.GetComponent<RectTransform>();
-            rt.anchorMin = Vector2.zero;
-            rt.anchorMax = Vector2.one;
-            rt.offsetMin = Vector2.zero;
-            rt.offsetMax = Vector2.zero;
-            
-            // Remove the placeholder text since we have the prefab
-            Object.DestroyImmediate(txt.gameObject);
-        }
+        // ==========================================
+        // 100% NATIVE C# MAP (NO WEBVIEW, NO CRASH)
+        // ==========================================
+        var mapContainer = new GameObject("NativeMapContainer");
+        mapContainer.transform.SetParent(ph.transform, false);
+        
+        var rt = mapContainer.AddComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        
+        // AÑADIR MÁSCARA INFALIBLE (Image + Mask) PARA QUE EL MAPA NO SE SALGA DEL CUADRADO
+        var maskImg = mapContainer.AddComponent<UnityEngine.UI.Image>();
+        maskImg.color = new Color(1, 1, 1, 1);
+        var mask = mapContainer.AddComponent<UnityEngine.UI.Mask>();
+        mask.showMaskGraphic = false; // Oculta el fondo blanco, solo recorta
+        
+        mapContainer.AddComponent<NativeGpsMapScreen>();
+        
+        // Remove the placeholder text 
+        Object.DestroyImmediate(txt.gameObject);
 
         // Contenedor para botones de mapa (bottom right)
         var mapCtrls = R(canvas.transform, "MapControls", V(0.92f, 0.05f), V(0.98f, 0.12f)); // ajustado para un solo boton

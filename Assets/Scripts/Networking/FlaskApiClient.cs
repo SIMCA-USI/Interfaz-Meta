@@ -59,10 +59,12 @@ public class FlaskApiClient : MonoBehaviour
 
     void Awake()
     {
-        if (Instance != null && Instance != this)
+        if (Instance == null)
         {
-            Destroy(gameObject);
-            return;
+            Instance = this;
+            // FORZAMOS LA IP, IGNORANDO PLAYERPREFS POR AHORA PARA EVITAR FALLOS DE RED
+            // serverIp = PlayerPrefs.GetString("ServerIP", serverIp);
+            // serverPort = PlayerPrefs.GetInt("ServerPort", serverPort);
         }
         Instance = this;
     }
