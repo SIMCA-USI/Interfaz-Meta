@@ -31,7 +31,7 @@ Aplicación desarrollada en **Unity 6 LTS** para visores **Meta Quest 3**, que s
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Teleoperación Inmersiva**        | Control total del vehículo (aceleración, frenado y dirección) utilizando los joysticks de los mandos de Meta Quest.                                                 |
 | **Streaming Multi-Cámara (MJPEG)** | Visualización simultánea de hasta 5 flujos de vídeo de baja latencia directamente desde el vehículo, con carga escalonada y reconexión automática.                  |
-| **Mapa GPS Interactivo**           | Navegador web embebido (TLab WebView) que renderiza la interfaz GPS HTML directamente dentro del mundo VR.                                                          |
+| **Mapa GPS Nativo (C#)**           | Mapa de calles renderizado 100% en C# nativo con tiles de CartoDB Voyager, proyección Web Mercator exacta, rastro GPS azul y flecha de orientación del vehículo. Sin dependencias Android externas. |
 | **Realidad Mixta (Passthrough)**   | Intercala entre entorno 100% virtual y el modo "Passthrough" para que el piloto no pierda noción de su entorno físico real.                                         |
 | **Auto-Descubrimiento UDP**        | Las gafas detectan automáticamente el servidor Flask del vehículo en la red local mediante broadcast UDP en puerto 5555.                                            |
 | **Interfaz Generada por Código**   | Toda la escena 3D (paneles, botones, HUD, cámaras) se genera automáticamente desde código C# (`SceneBuilder.cs`), replicando el diseño CSS de la interfaz web HTML. |
@@ -51,15 +51,15 @@ Aplicación desarrollada en **Unity 6 LTS** para visores **Meta Quest 3**, que s
 │  │ Handler      │   │  HTTP Client) │   │ (Hilos separados)│               │
 │  └──────────────┘   └───────┬───────┘   └────────┬─────────┘               │
 │                             │                     │                         │
-│  ┌──────────────┐   ┌───────┴───────┐             │                         │
-│  │ Server       │   │ ControlPanel  │             │                         │
-│  │ Discovery    │   │ UI            │             │                         │
-│  │ (UDP:5555)   │   │ (728 líneas)  │             │                         │
-│  └──────┬───────┘   └───────────────┘             │                         │
+│  ┌──────────────┐   ┌───────┴───────┐   ┌────────┴─────────┐               │
+│  │ Server       │   │ ControlPanel  │   │ NativeGpsMap     │               │
+│  │ Discovery    │   │ UI            │   │ Screen           │               │
+│  │ (UDP:5555)   │   │ (728 líneas)  │   │ (CartoDB + Merc.)│               │
+│  └──────┬───────┘   └───────────────┘   └────────┬─────────┘               │
 │         │                                         │                         │
 └─────────┼─────────────────────────────────────────┼─────────────────────────┘
           │            WiFi / Ethernet               │
-          │                                         │
+          │                                         │ HTTPS (tiles CartoDB)
 ┌─────────┼─────────────────────────────────────────┼─────────────────────────┐
 │         ▼                                         ▼                         │
 │  ┌──────────────┐   ┌───────────────┐   ┌──────────────────┐               │
@@ -67,18 +67,18 @@ Aplicación desarrollada en **Unity 6 LTS** para visores **Meta Quest 3**, que s
 │  │ Puerto 5555  │   │ (web_node.py) │   │ MJPEG Streams    │               │
 │  └──────────────┘   └───────┬───────┘   └──────────────────┘               │
 │                             │                                               │
-│                     ┌───────┴───────┐                                       │
-│                     │    ROS 2      │                                       │
-│                     │  (Topics,     │                                       │
-│                     │   Services)   │                                       │
-│                     └───────┬───────┘                                       │
-│                             │                                               │
-│                     ┌───────┴───────┐                                       │
-│                     │   VEHÍCULO    │                                       │
-│                     │  (Motores,    │                                       │
-│                     │   Cámaras,    │                                       │
-│                     │   Sensores)   │                                       │
-│                     └───────────────┘                                       │
+│                     ┌───────┴───────┐    ┌──────────────────┐               │
+│                     │    ROS 2      │    │  CartoDB Voyager  │               │
+│                     │  (Topics,     │    │  (tiles de mapa)  │               │
+│                     │   Services)   │    │  basemaps.carto.. │               │
+│                     └───────┬───────┘    └──────────────────┘               │
+│                             │                    ↑ HTTPS                     │
+│                     ┌───────┴───────┐            │                           │
+│                     │   VEHÍCULO    │    Las gafas descargan                 │
+│                     │  (Motores,    │    tiles directamente                  │
+│                     │   Cámaras,    │    de Internet                         │
+│                     │   Sensores)   │                                        │
+│                     └───────────────┘                                        │
 │                                                                             │
 │              JETSON / PC CON ROS 2 (Python + Flask)                         │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -92,7 +92,7 @@ Aplicación desarrollada en **Unity 6 LTS** para visores **Meta Quest 3**, que s
 | **Comandos**   | HTTP POST (JSON) | Quest → Flask | Joystick VR, cambio de modo, emergencia, rutas      |
 | **Vídeo**      | MJPEG sobre HTTP | Quest ← Flask | Hasta 5 streams simultáneos (`/video_feed/{1..5}`)  |
 | **Discovery**  | UDP Broadcast    | Quest ← Flask | Auto-detección de IP del servidor (puerto 5555)     |
-| **Mapa GPS**   | WebView HTTP     | Quest ← Flask | Página HTML `/gps_only` renderizada en TLab WebView |
+| **Mapa GPS**   | HTTP GET (JSON)  | Quest ← Flask | Coordenadas GPS y orientación via `/get_full_state`, tiles de CartoDB Voyager via HTTPS |
 
 ---
 
@@ -231,6 +231,17 @@ error CS1032: Cannot define/undefine preprocessor symbols after first token in f
 
 > **Nota:** Si algún warning no se arregla con "Fix All", generalmente se puede ignorar (son recomendaciones, no errores bloqueantes).
 
+#### 5.1 — Activar Resolución Dinámica (Dynamic Resolution)
+
+Para que los textos de la interfaz y los tiles del mapa GPS se vean nítidos en las gafas, es necesario activar la resolución dinámica:
+
+1. Ve a `Edit > Project Settings > Quality`.
+2. Selecciona el perfil de calidad activo (normalmente el primer perfil de la lista bajo la columna **Android**).
+3. Haz clic en el **Render Pipeline Asset** asociado para abrirlo en el Inspector.
+4. Busca la sección **Dynamic Resolution** y actívala (marca la casilla **Enable**).
+
+> **¿Por qué es necesario?** Sin resolución dinámica, los textos de TextMeshPro y las imágenes de los tiles del mapa se ven borrosos y pixelados en las Meta Quest 3, especialmente a la distancia de lectura de 2.5 metros a la que se colocan los paneles.
+
 ---
 
 ### Paso 6: Configurar Input System
@@ -262,7 +273,7 @@ Todos los paquetes ya vienen declarados en `Packages/manifest.json` y se instala
 | **XR Hands**                  | 1.7.3    | Unity Registry                                           | Tracking de manos (opcional, para futuro uso)                   |
 | **OpenXR**                    | 1.16.1   | Unity Registry                                           | Backend de XR multiplataforma                                   |
 | **Input System**              | 1.19.0   | Unity Registry                                           | Nuevo sistema de input de Unity                                 |
-| **TLab WebView**              | git      | [GitHub](https://github.com/TLabAltoh/TLabWebView.git)   | Navegador web embebido Android-only (para mapa GPS)             |
+| **TLab WebView**              | git      | [GitHub](https://github.com/TLabAltoh/TLabWebView.git)   | Navegador web embebido Android-only (legacy, ya no usado para GPS) |
 | **TLab VKeyboard**            | git      | [GitHub](https://github.com/TLabAltoh/TLabVKeyborad.git) | Teclado virtual en VR (dependencia de TLab WebView)             |
 | **Universal Render Pipeline** | 17.0.4   | Unity Registry                                           | Pipeline de render moderno                                      |
 | **TextMesh Pro**              | built-in | Unity                                                    | Texto de alta calidad en la UI                                  |
@@ -280,26 +291,11 @@ Si necesitas reinstalar manualmente TLab WebView o VKeyboard:
 
 ---
 
-### Paso 8: Copiar Prefab de TLab WebView
+### Paso 8: (Obsoleto) ~~Copiar Prefab de TLab WebView~~
 
-El `SceneBuilder.cs` usa `Resources.Load<GameObject>("TLab/WebView/Browser")` para instanciar el navegador web. Sin embargo, Unity solo busca en `Assets/Resources/`, no en el `PackageCache`. Hay que copiar el prefab manualmente:
-
-```bash
-# Desde la raíz del proyecto Unity:
-mkdir -p Assets/Resources/TLab/WebView/
-
-# Copiar el prefab (la ruta exacta puede variar según el hash del commit de git):
-cp "Library/PackageCache/com.tlabaltoh.webview@*/Resources/TLab/WebView/Browser.prefab" \
-   "Assets/Resources/TLab/WebView/Browser.prefab"
-```
-
-> **¿Cómo encontrar la ruta exacta?** Si el wildcard `*` no funciona, busca manualmente:
+> **Nota:** Este paso ya **NO es necesario**. La pantalla del mapa GPS ahora usa un renderizado 100% nativo en C# (`NativeGpsMapScreen.cs`) que descarga tiles de CartoDB Voyager directamente, sin necesidad de TLab WebView ni de copiar prefabs del `PackageCache`.
 >
-> ```bash
-> find Library/PackageCache/ -name "Browser.prefab" -path "*/TLab/*"
-> ```
-
-Después de copiar, vuelve a Unity y espera a que detecte el nuevo archivo.
+> El paquete TLab WebView sigue declarado en `manifest.json` por si se necesita en el futuro para otros usos, pero el mapa GPS funciona sin él.
 
 ---
 
@@ -320,7 +316,7 @@ El `SceneBuilder.cs` habrá creado automáticamente:
 - El **XR Camera Rig** (OVRCameraRig con OVRManager y Passthrough)
 - El **panel principal** (vídeo de cámara 1 + panel de control lateral con todos los botones)
 - **4 paneles de cámaras secundarias** (cámaras 2, 3, 4, 5)
-- El **panel del mapa GPS** (con TLab WebView)
+- El **panel del mapa GPS** nativo (con `NativeGpsMapScreen`, máscara de recorte `Image + Mask`, y contenedor para tiles de CartoDB)
 - El objeto **[Managers]** con `FlaskApiClient`, `QuestControllerHandler` y `ServerDiscovery`
 - Los **`MjpegStreamReceiver`** adjuntos a cada panel de cámara
 - El **EventSystem** con `InputSystemUIInputModule`
@@ -479,7 +475,9 @@ MetaQuestVehcileControl/
 │   │   ├── UI/
 │   │   │   ├── ControlPanelUI.cs     ← Lógica de la interfaz (botones, HUD)
 │   │   │   ├── CameraPanelController.cs ← Contenedor de panel de cámara
+│   │   │   ├── GpsMapScreen.cs       ← Controller legacy para TLab WebView (no activo)
 │   │   │   ├── LoadingAnimator.cs    ← Animaciones de carga (rotación, pulso)
+│   │   │   ├── NativeGpsMapScreen.cs ← Mapa GPS nativo C# (tiles CartoDB + Web Mercator)
 │   │   │   ├── NoDragScrollRect.cs   ← ScrollRect sin drag/scroll por joystick
 │   │   │   └── VRKeyboardFocus.cs    ← Teclado nativo Android en VR
 │   │   └── XR/
@@ -487,7 +485,7 @@ MetaQuestVehcileControl/
 │   ├── Oculus/                       ← Configuración de OVR (auto-generado)
 │   ├── Plugins/                      ← Plugins nativos Android
 │   ├── Resources/
-│   │   └── TLab/WebView/Browser.prefab ← Prefab del navegador web (copiado)
+│   │   └── TLab/WebView/Browser.prefab ← Prefab del navegador web (legacy, no requerido para GPS)
 │   ├── Samples/                      ← Samples de XR Interaction Toolkit
 │   ├── Scenes/
 │   │   └── MainControlRoom.unity     ← Escena principal (generada por SceneBuilder)
@@ -518,12 +516,12 @@ MetaQuestVehcileControl/
 
 - **[XR Camera Rig]**: Busca el prefab `OVRCameraRig` y lo instancia. Si no lo encuentra, crea una cámara básica a 1.6m de altura. Configura `OVRManager` con Passthrough habilitado y `OVRPassthroughLayer` oculto por defecto (arranca en modo VR).
 - **Main_Web_Interface**: Canvas 3D principal (resolución **1280×720**, tamaño físico 1.8m × 1.01m) con:
-  - Área de vídeo (78% izquierdo) con overlay de carga animado
+    - Área de vídeo (78% izquierdo) con overlay de carga animado
   - Panel lateral derecho (22%) con ScrollView, botones de operación, input fields, toggles
   - HUD de telemetría (velocidad, parada de emergencia)
   - Botones de STOP y candado superpuestos en el vídeo
 - **CameraPanel_2/3/4/5**: 4 paneles secundarios (resolución **1280×720**, tamaño 0.8m × 0.45m), cada uno con su header de color diferente y overlay de carga
-- **[GPS Map Panel]**: Panel con TLab WebView (resolución **1920×1080**, tamaño 1.2m × 0.675m) para el mapa GPS interactivo
+- **[GPS Map Panel]**: Panel con mapa GPS **nativo C#** (resolución **1920×1080**, tamaño 1.2m × 0.675m). Incluye `NativeMapContainer` con máscara de recorte (`Image + Mask`) para que los tiles no se salgan del panel, y `NativeGpsMapScreen` que gestiona la descarga de tiles, la flecha y el rastro
 - **[Managers]**: Objeto con `FlaskApiClient`, `QuestControllerHandler` y `ServerDiscovery`
 - **[UI Panels]**: Contenedor padre con `LazyFollowUI` para seguimiento de cabeza
 - **EventSystem**: Con `InputSystemUIInputModule` para compatibilidad con el nuevo Input System
@@ -628,7 +626,52 @@ MetaQuestVehcileControl/
 
 **Sincronización bidireccional:** Cuando el usuario pulsa un botón, se envía el comando al backend. Simultáneamente, el polling de `FlaskApiClient` trae el estado del backend, y `UpdateUI()` actualiza los colores de los botones, el HUD (velocidad, roll/pitch, emergencia, progreso de ruta) y los toggles.
 
-**Mapa GPS:** Usa una coroutine `InitMapWhenConnected()` que espera a que haya conexión real al servidor antes de inicializar TLab WebView con la URL correcta (`http://{ip}:{port}/gps_only`).
+**Mapa GPS:** Detecta el `[GPS Map Panel]` y delega la visualización al `NativeGpsMapScreen`, que espera a que `FlaskApiClient` esté conectado antes de descargar los tiles y la flecha.
+
+---
+
+#### `Assets/Scripts/UI/NativeGpsMapScreen.cs` — Mapa GPS Nativo C# (319 líneas)
+
+**Renderizador 100% C# nativo** que reemplaza al antiguo TLab WebView para mostrar el mapa GPS del vehículo. Descarga tiles de mapa de CartoDB Voyager, dibuja el rastro azul del recorrido y muestra la flecha de orientación del vehículo, todo sin dependencias Android externas.
+
+**Arquitectura:**
+
+- **Tiles de CartoDB Voyager**: Descarga un grid de **3×3 tiles** centrado en la posición actual del vehículo. Cada tile se renderiza como un `RawImage` hijo del contenedor del mapa, con un tamaño de **600×600 píxeles UI**. Se usa CartoDB Voyager en lugar de OpenStreetMap porque los servidores de OSM bloquean las peticiones desde Unity con error 403 Forbidden.
+- **Proyección Web Mercator**: Implementa la misma matemática de Leaflet.js (`LatLonToMercator()`) para convertir coordenadas GPS a píxeles de mapa. Esto garantiza que la posición del vehículo cuadre **exactamente** con la calle/edificio correcto del tile.
+- **Offset fraccional sub-tile**: Calcula el desplazamiento exacto del vehículo dentro de su tile central para centrarlo pixel-perfect en la pantalla.
+- **Flecha de orientación**: Descarga la misma imagen `arrow.png` del servidor Flask que usa la interfaz web. La flecha rota según el heading del vehículo (`orientation` del JSON de `/get_full_state`). Si la descarga falla (sin conexión), muestra un fallback verde.
+- **Rastro azul**: Dibuja segmentos de línea (`RawImage` estirados y rotados) conectando todos los puntos del `position_history` del servidor. Color `#3b82f6` (azul de la web), grosor 12px, opacidad 70%. Los segmentos se reciclan para evitar creación continua de GameObjects.
+
+**Polling:**
+
+Cada 0.5 segundos consulta `/get_full_state` al servidor Flask para obtener:
+- `position_history` — Array de coordenadas `[lat, lon]` del recorrido
+- `orientation` — Heading del vehículo en grados
+
+**Sincronización con auto-discovery:**
+
+El script espera a que `FlaskApiClient.isConnected == true` antes de intentar descargar la flecha o los tiles. Esto evita que arranque con una IP incorrecta cuando el auto-descubrimiento UDP aún no ha terminado. Las peticiones HTTP tienen un timeout de 2 segundos para no colgarse si la IP cambia en mitad de la misión.
+
+**Máscara de recorte:**
+
+El contenedor padre (`NativeMapContainer`) en `SceneBuilder` lleva un componente `Image + Mask` que recorta cualquier tile o segmento de línea que se salga del panel del mapa.
+
+---
+
+#### `Assets/Scripts/UI/GpsMapScreen.cs` — Controller Legacy WebView (105 líneas)
+
+> ⚠️ **Script legacy.** No se usa activamente. Ha sido reemplazado por `NativeGpsMapScreen.cs`.
+
+Controller original que gestionaba la inicialización de **TLab WebView** para renderizar la página HTML del GPS (`/gps_only`) dentro de Unity. Se mantiene en el repositorio como referencia y por si en el futuro se necesita un WebView para otros usos.
+
+**Funcionamiento (legacy):**
+
+1. Buscaba el componente `TLab.WebView.Browser` en el GameObject
+2. Esperaba a que `FlaskApiClient` estuviera conectado
+3. Inicializaba el motor de WebView y navegaba a `http://{ip}:{port}/gps_only`
+4. En cada frame, llamaba a `UpdateFrame()` para renderizar la web en la textura de Unity
+
+**Motivo del reemplazo:** TLab WebView dependía de GeckoView (motor de Firefox para Android), que causaba inestabilidad y crashes frecuentes en las Meta Quest 3. Además, era completamente incompatible con el Editor de Unity en PC (solo funcionaba en Android), impidiendo las pruebas en el escritorio.
 
 ---
 
@@ -762,21 +805,24 @@ Todos los endpoints que `FlaskApiClient.cs` consume del servidor Flask (`web_nod
 
 | #   | Problema                                                       | Causa                                                                               | Solución                                                                                    |
 | --- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 5   | **Panel GPS siempre negro** (en PC)                            | TLab WebView es **Android-only**. En el Editor de Linux/Windows no puede renderizar | **Normal.** Funciona correctamente en las gafas Quest. No hay workaround para PC            |
+| 5   | **Panel GPS con fondo gris oscuro sin mapa** (en PC o gafas)   | Las gafas/PC no tienen conexión a internet, o el servidor Flask no envía GPS        | Verificar conexión WiFi con internet. El mapa necesita descargar tiles de `basemaps.cartocdn.com` |
 | 6   | **`DllNotFoundException: OVRPlugin`** (errores rojos en Linux) | El SDK de Meta busca DLLs nativas de Windows/Android que no existen en Linux        | **Ignorar.** Todo funcionará correctamente al compilar el APK para las gafas                |
 | 7   | **Solo se ven 2 de 5 cámaras**                                 | .NET/Mono limita a 2 conexiones HTTP simultáneas a la misma IP por defecto          | `MjpegStreamReceiver` ya lo soluciona con `ServicePointManager.DefaultConnectionLimit = 10` |
 | 8   | **Joystick hace scroll en el panel de control**                | El ScrollRect intercepta eventos del eje vertical del joystick XR                   | `NoDragScrollRect` bloquea `OnScroll()`. Ya está implementado                               |
 | 9   | **Botón A (Passthrough) no funciona sin conexión al servidor** | El guard clause bloqueaba TODOS los botones                                         | Ya solucionado: separación en `HandleLocalButtons()` y `HandleNetworkButtons()`             |
 | 10  | **Botón B (VR Mode) no se refleja en la interfaz web**         | Usaba el endpoint incorrecto (`/publish_modo_mision` en vez de `/api/control`)      | Ya solucionado: `SendVrMode()` ahora usa `/api/control` con `"boton":"vr_mode"`             |
-| 11  | **Textos borrosos o pixelados en VR**                          | Limitación de los atlas de fuentes estáticos de TextMeshPro                         | Asegúrate de tener activada la **Resolución Dinámica (Dynamic Resolution)** o generar un Font Asset SDF con mayor resolución/padding. |
+| 11  | **Textos borrosos o pixelados en VR**                          | Limitación de los atlas de fuentes estáticos de TextMeshPro                         | **Activar Resolución Dinámica** en `Project Settings > Quality > Render Pipeline Asset > Dynamic Resolution`. También se puede generar un Font Asset SDF con mayor resolución/padding. |
+| 12  | **Mapa GPS con error 403 Forbidden** (tiles no cargan)         | OpenStreetMap bloquea peticiones desde Unity (User-Agent no reconocido)              | Ya solucionado: se usa **CartoDB Voyager** (`basemaps.cartocdn.com`) que permite CORS libre  |
+| 13  | **Flecha del GPS se ve como cuadrado verde**                   | No hay conexión al servidor Flask (la imagen `arrow.png` no se pudo descargar)      | Verificar que el auto-descubrimiento UDP funciona y que `FlaskApiClient.isConnected == true` |
+| 14  | **Mapa GPS se sale del panel**                                 | Falta la máscara de recorte en el contenedor                                        | Ya solucionado: `SceneBuilder` añade `Image + Mask` al `NativeMapContainer` para recortar   |
 
 ### Problemas de Conexión/Hardware
 
 | #   | Problema                                       | Causa                                                        | Solución                                                                               |
 | --- | ---------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| 11  | **ADB no detecta las gafas sin `sudo`**        | Falta regla udev para el Vendor ID de Meta (2833)            | Crear regla udev. Ver [Paso 11](#paso-11-configurar-adb-conexión-usb-con-las-gafas)    |
-| 12  | **Meta XR Simulator no funciona en Linux**     | Solo disponible para Windows/Mac                             | Usar atajos de teclado (V, P, Espacio) + Scene View del editor                         |
-| 13  | **Las gafas no se conectan al servidor Flask** | Las gafas y el PC del vehículo no están en la misma red WiFi | Verificar que ambos dispositivos están conectados a la misma red. Comprobar con `ping` |
+| 15  | **ADB no detecta las gafas sin `sudo`**        | Falta regla udev para el Vendor ID de Meta (2833)            | Crear regla udev. Ver [Paso 11](#paso-11-configurar-adb-conexión-usb-con-las-gafas)    |
+| 16  | **Meta XR Simulator no funciona en Linux**     | Solo disponible para Windows/Mac                             | Usar atajos de teclado (V, P, Espacio) + Scene View del editor                         |
+| 17  | **Las gafas no se conectan al servidor Flask** | Las gafas y el PC del vehículo no están en la misma red WiFi | Verificar que ambos dispositivos están conectados a la misma red. Comprobar con `ping` |
 
 ### ¿Por qué NO usar Unity 6000.5.0.0 o superior?
 
@@ -807,7 +853,7 @@ Puedes probar parcialmente el proyecto sin necesidad de las Meta Quest:
 
 **Limitaciones en PC:**
 
-- El panel del **mapa GPS se verá vacío/negro** (TLab WebView es Android-only)
+- El panel del **mapa GPS se verá correctamente** si tienes conexión a internet (los tiles de CartoDB Voyager se descargan directamente en C# nativo)
 - Los errores rojos de `OVRPlugin` en la consola son normales en Linux
 - No podrás probar la interacción por rayo (el cursor del ratón no simula el rayo XR a menos que instales XR Device Simulator)
 
@@ -821,7 +867,7 @@ Puedes probar parcialmente el proyecto sin necesidad de las Meta Quest:
    - ✅ El rayo del mando derecho puede hacer clic en botones
    - ✅ Las cámaras muestran vídeo (si el servidor Flask está corriendo)
    - ✅ El botón A cambia entre VR y Passthrough
-   - ✅ El mapa GPS muestra la página web (si el servidor Flask está corriendo)
+   - ✅ El mapa GPS muestra las calles con tiles de CartoDB y la flecha/rastro del vehículo
    - ✅ El joystick envía comandos de dirección
 
 ### Verificar Endpoints del Servidor
